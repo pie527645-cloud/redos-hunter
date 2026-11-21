@@ -270,9 +270,16 @@ export function discoverFilesInTarget(
   }
 
   if (inputLstat.isSymbolicLink()) {
-    // If targetInput is inside cwd, ensure symlink does not escape cwd
+    // Expand 8.3 short names / symlinks in parent dir without dereferencing the leaf symlink itself
     const realCwd = fs.realpathSync.native(cwd);
-    if (isWithinRoot(realCwd, resolvedInput) && !isWithinRoot(realCwd, realTarget)) {
+    let canonicalInputWithLeafLink = resolvedInput;
+    try {
+      const realParent = fs.realpathSync.native(path.dirname(resolvedInput));
+      canonicalInputWithLeafLink = path.join(realParent, path.basename(resolvedInput));
+    } catch {
+      // Fallback to resolvedInput
+    }
+    if (isWithinRoot(realCwd, canonicalInputWithLeafLink) && !isWithinRoot(realCwd, realTarget)) {
       throw new PathSecurityError(
         `Symbolic link escapes workspace root: ${targetInput}`,
         'SYMLINK_ESCAPE_BLOCKED'
