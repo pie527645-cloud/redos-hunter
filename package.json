@@ -1,0 +1,49 @@
+{
+  "name": "@pie527645-cloud/redos-hunter",
+  "version": "1.0.0",
+  "description": "Static regular expression ambiguity analyzer and isolated sandbox empirical ReDoS confirmation CLI.",
+  "type": "module",
+  "license": "MIT",
+  "author": "pie527645-cloud",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pie527645-cloud/redos-hunter.git"
+  },
+  "homepage": "https://github.com/pie527645-cloud/redos-hunter#readme",
+  "bugs": {
+    "url": "https://github.com/pie527645-cloud/redos-hunter/issues"
+  },
+  "engines": {
+    "node": ">=20.18.1"
+  },
+  "bin": {
+    "redos-hunter": "./dist/cli.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./cli": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "lint": "tsc --noEmit",
+    "build": "tsc -p tsconfig.build.json && tsc -p tsconfig.test.json",
+    "test": "node --test dist-test/tests/charset.test.js dist-test/tests/analyzer.test.js dist-test/tests/extractor.test.js dist-test/tests/fixes.test.js dist-test/tests/sandbox.test.js dist-test/tests/oracle.test.js dist-test/tests/cli.test.js"
+  },
+  "dependencies": {
+    "@eslint-community/regexpp": "^4.12.1",
+    "typescript": "^5.7.3",
+    "yaml": "^2.7.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.19"
+  }
+}
