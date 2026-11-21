@@ -4,9 +4,9 @@ Static regular expression ambiguity analyzer and isolated sandbox empirical ReDo
 
 ## Why `redos-hunter`?
 
-- **Beyond naive star-height checks:** Tools such as `safe-regex` inspect syntactic star height alone, producing high false-positive rates on disjoint delimiter loops (`^\w+(?:\/\w+)*\/?$`) while missing polynomial $O(n^2) / O(n^3)$ traps (`/^\/+|\/+$/g`, `\d+\d+`, `.*.*=`).
+- **Beyond naive star-height checks:** Tools such as `safe-regex` inspect syntactic star height alone, producing high false-positive rates on disjoint delimiter loops (`^\w+(?:\/\w+)*\/?$`) while missing polynomial $O(n^2) / O(n^3)$ traps (`\d+\d+`, `.*.*=`, `/^\/+|\/+$/g`).
 - **Flag-accurate code-point interval set math:** Character classes, escapes (`\w`, `\d`, `\s`, `\p{...}`), case-folding (`i`), Unicode code points (`u`), and ECMAScript 2024 `v`-flag set subtraction/intersection (`[[a-z]--[m-p]]`) are evaluated as exact sorted closed intervals.
-- **Actionable attack strings and verified rewrites:** Every static finding includes a deterministic pump/suffix witness string and a concrete linear rewrite verified to pass `RDH001`–`RDH006`.
+- **Actionable attack strings and verified rewrites:** Every static finding includes a deterministic pump/suffix witness string and a concrete linear rewrite verified to pass `RDH001`–`RDH007`.
 - **Isolated empirical `--confirm`:** Optionally verifies super-linear growth (`exp` or `poly`) inside an isolated sandbox (`worker_threads` or `child_process` with `shell: false` and empty `env`) under strict per-probe timeouts without ever executing scanned repository code.
 
 ## Requirements
@@ -72,9 +72,10 @@ redos-hunter explain "([[a-z]--[m-p]]|[m-p])+$" --flags v --format json
 | --- | --- | --- | --- | --- | --- |
 | `RDH001` | `high` | `exp` | Nested quantifier (`star-height > 1`) with cross-iteration overlap | `^(a+)+$`, `^(\w+\s?)*$` | `^a+$`, `^(?:\w+(?:\s\|$))*$` |
 | `RDH002` | `high` | `exp` | Overlapping alternation branches under a quantifier | `^(\w\|\d)+$`, `(.|\s)*$` | `^\w+$`, `[\s\S]*$` |
-| `RDH003` | `medium` / `high` | `poly` | Adjacent overlapping quantifiers shifting token boundaries quadratically | `^\d+\d+$`, `.*.*=` | `^\d{2,}$`, `[^=\r\n]*=` |
-| `RDH005` | `high` | `exp` / `poly` | Nested optional slash/delimiter trap or unanchored trailing quantifier | `^(\w+\/?)+$`, `/^\/+\|\/+$/g` | `^\w+(?:\/\w+)*\/?$`, two-pointer `trimSlashes` / `^\/+\|(?<!\/)\/+$` |
+| `RDH003` | `medium` | `poly` | Adjacent overlapping quantifiers shifting token boundaries quadratically | `^\d+\d+$`, `.*.*=` | `^\d{2,}$`, `[^=\r\n]*=` |
+| `RDH005` | `high` (`exp`) / `medium` (`poly`) | `exp` / `poly` | Nested optional slash or delimiter loop backtracking across segments | `^(\w+\/?)+$`, `(a\/*)+b` | `^\w+(?:\/\w+)*\/?$`, `(?<![a/])a[a/]*b` |
 | `RDH006` | `medium` | `warning` | Backreference inside a quantified group (excluding atomic `(?=(...))\1` emulation) | `^(([a-z])\2)+$` | Validate repeated equality in code |
+| `RDH007` | `medium` | `poly` | Unanchored trailing quantifier scanning non-matching interior runs quadratically | `/^\/+\|\/+$/g`, `/^_+\|_+$/g`, `\s+$` | `^_+\|(?<!_)_+$`, `(?<!\/)\/+$`, or two-pointer slice loop |
 | `RDH900` | `info` | `info` | Unresolvable dynamic `new RegExp(...)` argument | `new RegExp(input)` | Validate or escape untrusted input |
 | `RDH901` | `info` | `info` | Pattern exceeds `64 KB` cap and was skipped | — | Reduce generated pattern size |
 | `RDH902` | `info` | `info` | File exceeds `2 MB` size cap and was skipped | — | Exclude minified bundles |
@@ -93,8 +94,8 @@ redos-hunter explain "([[a-z]--[m-p]]|[m-p])+$" --flags v --format json
 
 ## Common Linear Rewrites
 
-1. **Trimming leading/trailing slashes (`RDH005`):**
-   Unanchored `/^\/+|\/+$/g` scans from every character offset in interior slash runs (`O(n^2)`). Prefer a linear two-pointer slice helper:
+1. **Trimming leading/trailing characters (`RDH007`):**
+   Unanchored `/^\/+|\/+$/g` or `/^_+|_+$/g` scans quadratically ($O(n^2)$) across long non-matching interior runs. Prefer a linear two-pointer slice helper:
    ```ts
    export function trimSlashes(input: string): string {
      let start = 0;
@@ -104,7 +105,7 @@ redos-hunter explain "([[a-z]--[m-p]]|[m-p])+$" --flags v --format json
      return start === 0 && end === input.length ? input : input.slice(start, end);
    }
    ```
-   Or guard the trailing branch with a negative lookbehind: `/^\/+|(?<!\/)\/+$/g`.
+   Or guard the trailing quantifier with a negative lookbehind: `/^\/+|(?<!\/)\/+$/g` or `/^_+|(?<!_)_+$/g`.
 2. **Optional path delimiters (`RDH005`):**
    Rewrite `/^(\w+\/?)+$/` to `/^\w+(?:\/\w+)*\/?$/` so `/` is required between `\w+` segments.
 3. **Disjoint sets with `v` flag (`RDH002`):**

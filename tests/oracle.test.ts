@@ -20,14 +20,20 @@ describe('Committed pre-fix repo-atlas ReDoS regression oracle', () => {
     assert.equal(report.extractedPatternsCount, 4);
     assert.equal(report.findings.length, 4);
 
+    const rdh007 = report.findings.filter((f) => f.ruleId === 'RDH007');
     const rdh005 = report.findings.filter((f) => f.ruleId === 'RDH005');
     const rdh001 = report.findings.filter((f) => f.ruleId === 'RDH001');
 
-    assert.equal(rdh005.length, 3, 'Expected 3 RDH005 findings (2 trimSlashes + 1 ^(\\w+\\/?)+$)');
+    assert.equal(rdh007.length, 2, 'Expected 2 RDH007 findings (2 trimSlashes ^\\/+|\\/+$/g)');
+    assert.equal(rdh005.length, 1, 'Expected 1 RDH005 finding (^(\\w+\\/?)+$)');
     assert.equal(rdh001.length, 1, 'Expected 1 RDH001 finding ((a+)+$)');
 
     for (const f of report.findings) {
-      assert.equal(f.severity, 'high');
+      assert.equal(
+        f.severity,
+        f.complexity === 'exp' ? 'high' : 'medium',
+        `Expected class-derived severity for ${f.ruleId}`
+      );
       assert.equal(
         f.evidence?.status,
         'confirmed',

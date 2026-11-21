@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { analyzePattern, CANONICAL_REWRITE_CATALOG } from '../src/index.js';
 
-describe('Mandatory Fix-Hint Self-Check (all suggested rewrites pass RDH001-006)', () => {
+describe('Mandatory Fix-Hint Self-Check (all suggested rewrites pass RDH001-007)', () => {
   it('emits 0 findings on every rewrite in CANONICAL_REWRITE_CATALOG', () => {
     assert.ok(CANONICAL_REWRITE_CATALOG.length >= 10);
 
@@ -38,6 +38,7 @@ describe('Mandatory Fix-Hint Self-Check (all suggested rewrites pass RDH001-006)
       ['^(\\w+\\/?)+$', ''],
       ['(a\\/*)+b', ''],
       ['^\\/+|\\/+$', 'g'],
+      ['^_+|_+$', 'g'],
       ['\\s+$', '']
     ];
 

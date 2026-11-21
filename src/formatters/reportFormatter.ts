@@ -38,14 +38,20 @@ const SARIF_RULES: readonly SarifRuleMetadata[] = [
   },
   {
     id: 'RDH005',
-    name: 'DelimiterAndTrailingSlashTrap',
-    shortDescription: 'Nested optional delimiter loop or unanchored trailing quantifier causes catastrophic backtracking.',
+    name: 'NestedDelimiterLoop',
+    shortDescription: 'Nested optional slash or delimiter loop causes exponential backtracking.',
     defaultLevel: 'error'
   },
   {
     id: 'RDH006',
     name: 'QuantifiedBackreference',
     shortDescription: 'Backreference inside a quantified group disables linear automaton execution.',
+    defaultLevel: 'warning'
+  },
+  {
+    id: 'RDH007',
+    name: 'UnanchoredTrailingQuantifier',
+    shortDescription: 'Unanchored end-anchored quantifier scans interior runs quadratically.',
     defaultLevel: 'warning'
   },
   {

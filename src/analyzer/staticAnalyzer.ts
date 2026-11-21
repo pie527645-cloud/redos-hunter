@@ -26,7 +26,8 @@ import {
   buildRdh002Fix,
   buildRdh003Fix,
   buildRdh005Fix,
-  buildRdh006Fix
+  buildRdh006Fix,
+  buildRdh007Fix
 } from './fixHints.js';
 import type {
   AttackSpec,
@@ -547,6 +548,10 @@ export function parseRegexAst(
   return { patternAst, flagsAst, effectiveFlags };
 }
 
+export function severityForComplexity(complexity: 'exp' | 'poly' | 'warning'): Severity {
+  return complexity === 'exp' ? 'high' : 'medium';
+}
+
 export function analyzePattern(
   patternSource: string,
   flagsStr = '',
@@ -592,7 +597,6 @@ export function analyzePattern(
 
   function emitFinding(params: {
     ruleId: RuleId;
-    severity: Severity;
     complexity: 'exp' | 'poly' | 'warning';
     message: string;
     span: { start: number; end: number };
@@ -614,7 +618,7 @@ export function analyzePattern(
     });
     findings.push({
       ruleId: params.ruleId,
-      severity: params.severity,
+      severity: severityForComplexity(params.complexity),
       complexity: params.complexity,
       message: params.message,
       file,
@@ -718,16 +722,13 @@ export function analyzePattern(
 
           flaggedQuantifiers.add(firstQuant);
           emitFinding({
-            ruleId: 'RDH005',
-            severity: 'high',
+            ruleId: 'RDH007',
             complexity: 'poly',
             message: `Unanchored end-anchored quantifier '${topAlt.raw}' scans from every character offset in non-matching runs (quadratic O(n^2) backtracking).`,
             span: { start: topAlt.start, end: topAlt.end },
             overlapSummary: `Repeated end-anchored set ${formatIntervalSummary(qSummary.firstChars)} without leading '^'`,
             attack: makeAttackSpec(prefix, pump, suffix, 'poly'),
-            fix: buildRdh005Fix(patternSource, flagsStr, 'unanchored-end-quantifier', {
-              outerQuant: firstQuant
-            })
+            fix: buildRdh007Fix(patternSource, flagsStr, firstQuant)
           });
         }
       }
@@ -797,7 +798,6 @@ export function analyzePattern(
 
         emitFinding({
           ruleId: 'RDH002',
-          severity: 'high',
           complexity: 'exp',
           message: `Overlapping alternation branches '${bodyEl.alternatives[foundOverlap.i]!.raw}' and '${bodyEl.alternatives[foundOverlap.j]!.raw}' inside quantifier '${quant.raw}' cause exponential backtracking.`,
           span: { start: quant.start, end: quant.end },
@@ -884,7 +884,6 @@ export function analyzePattern(
           flaggedQuantifiers.add(quant);
           emitFinding({
             ruleId: 'RDH005',
-            severity: 'high',
             complexity: 'exp',
             message: `Nested optional slash/delimiter inside quantified group '${quant.raw}' allows exponential O(2^n) backtracking when delimiters are omitted.`,
             span: { start: quant.start, end: quant.end },
@@ -901,7 +900,6 @@ export function analyzePattern(
           flaggedQuantifiers.add(quant);
           emitFinding({
             ruleId: 'RDH001',
-            severity: 'high',
             complexity: 'exp',
             message: `Nested quantifier '${quant.raw}' (star-height > 1) has cross-iteration overlap causing exponential O(2^n) backtracking.`,
             span: { start: quant.start, end: quant.end },
@@ -966,7 +964,6 @@ export function analyzePattern(
           flaggedQuantifiers.add(quant);
           emitFinding({
             ruleId: 'RDH005',
-            severity: 'high',
             complexity: 'poly',
             message: `Unanchored delimiter loop '${quant.raw}' re-scans repeated segment runs from every starting position when its trailing match fails (polynomial O(n^2) backtracking).`,
             span: { start: quant.start, end: quant.end },
@@ -1011,14 +1008,12 @@ export function analyzePattern(
             const witness = pickWitnessString(inter, flags) ?? 'a';
             const combinedChars = unionSets(sumI.allChars, sumJ.allChars);
 
-            // Check what follows `elJ` to construct a failing suffix and determine severity
-            let hasRequiredTail = false;
+            // Check what follows `elJ` to construct a failing suffix
             let tailFirstChars: CodePointSet = EMPTY_SET;
             let tailCanEmpty = true;
             for (let k = j + 1; k < elements.length; k++) {
               const tk = elements[k]!;
               if (tk.type === 'Assertion' && tk.kind === 'end') {
-                hasRequiredTail = true;
                 break;
               }
               const ts = summarizeElement(tk, flags);
@@ -1026,16 +1021,9 @@ export function analyzePattern(
                 tailFirstChars = unionSets(tailFirstChars, ts.firstChars);
               }
               if (!ts.canMatchEmptyMidString) {
-                hasRequiredTail = true;
                 tailCanEmpty = false;
               }
             }
-
-            const isWildcardPair =
-              elI.element.type === 'CharacterSet' &&
-              elI.element.kind === 'any' &&
-              elJ.element.type === 'CharacterSet' &&
-              elJ.element.kind === 'any';
 
             const prefix = buildLeadingPrefixSample(elI, patternAst, effectiveFlags);
             // If there is a required non-empty literal/token tail (like `=` in `.*.*=`), any char failing both or failing the tail triggers full backtracking
@@ -1051,7 +1039,6 @@ export function analyzePattern(
 
             emitFinding({
               ruleId: 'RDH003',
-              severity: isWildcardPair ? 'high' : 'medium',
               complexity: 'poly',
               message: `Adjacent overlapping quantifiers '${elI.raw}' and '${elJ.raw}' shift token boundaries polynomially across repeated ${formatIntervalSummary(inter)} runs.`,
               span: { start: elI.start, end: elJ.end },
@@ -1102,7 +1089,6 @@ export function analyzePattern(
         if (quantDepth > 0 && !atomicBackrefs.has(el)) {
           emitFinding({
             ruleId: 'RDH006',
-            severity: 'medium',
             complexity: 'warning',
             message: `Backreference '${el.raw}' inside a quantified group disables linear finite-automaton execution and risks super-linear backtracking.`,
             span: { start: el.start, end: el.end },
@@ -1119,7 +1105,6 @@ export function analyzePattern(
         if (el.element.type === 'Backreference' && isRepeatableLoop(el)) {
           emitFinding({
             ruleId: 'RDH006',
-            severity: 'medium',
             complexity: 'warning',
             message: `Quantified backreference '${el.raw}' disables linear finite-automaton execution and can trigger backtracking on repeated captures.`,
             span: { start: el.start, end: el.end },

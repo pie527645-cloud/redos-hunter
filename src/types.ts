@@ -6,6 +6,7 @@ export type RuleId =
   | 'RDH003'
   | 'RDH005'
   | 'RDH006'
+  | 'RDH007'
   | 'RDH900'
   | 'RDH901'
   | 'RDH902'

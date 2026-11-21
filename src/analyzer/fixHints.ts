@@ -367,10 +367,36 @@ export function buildRdh003Fix(
   };
 }
 
+export function buildRdh007Fix(
+  patternSource: string,
+  flagsStr: string,
+  outerQuant: AST.Quantifier
+): FixHint {
+  const singleAtom =
+    outerQuant.element.type === 'Character' ||
+    outerQuant.element.type === 'CharacterClass' ||
+    (outerQuant.element.type === 'CharacterSet' && outerQuant.element.kind !== 'any');
+  const rewrite = singleAtom
+    ? replaceSpan(
+        patternSource,
+        outerQuant.start,
+        outerQuant.end,
+        `(?<!${outerQuant.element.raw})${outerQuant.raw}`
+      )
+    : null;
+  return {
+    summary:
+      'Prefer a linear two-pointer slice loop (`trimSlashes` / `String.prototype.trimEnd()`), or guard the trailing quantifier with a negative lookbehind `(?<!C)C+$` so non-matching interior runs are not re-scanned from every offset.',
+    rewrite,
+    ...(rewrite !== null ? { rewriteFlags: flagsStr } : {}),
+    notes: LINEAR_ENGINE_NOTE
+  };
+}
+
 export function buildRdh005Fix(
   patternSource: string,
   flagsStr: string,
-  kind: 'nested-delimiter-exp' | 'nested-delimiter-poly' | 'unanchored-end-quantifier',
+  kind: 'nested-delimiter-exp' | 'nested-delimiter-poly',
   context: {
     outerQuant?: AST.Quantifier;
     tokenRaw?: string;
@@ -380,25 +406,6 @@ export function buildRdh005Fix(
     suffixEl?: AST.Element;
   }
 ): FixHint {
-  if (kind === 'unanchored-end-quantifier') {
-    const oq = context.outerQuant;
-    const singleAtom =
-      oq &&
-      (oq.element.type === 'Character' ||
-        oq.element.type === 'CharacterClass' ||
-        (oq.element.type === 'CharacterSet' && oq.element.kind !== 'any'));
-    const rewrite =
-      oq && singleAtom
-        ? replaceSpan(patternSource, oq.start, oq.end, `(?<!${oq.element.raw})${oq.raw}`)
-        : null;
-    return {
-      summary:
-        'Prefer a linear two-pointer slice loop (`trimSlashes` / `String.prototype.trimEnd()`), or guard the trailing quantifier with a negative lookbehind so non-matching runs are not re-scanned from every offset.',
-      rewrite,
-      ...(rewrite !== null ? { rewriteFlags: flagsStr } : {}),
-      notes: LINEAR_ENGINE_NOTE
-    };
-  }
 
   if (
     kind === 'nested-delimiter-exp' &&
@@ -521,11 +528,25 @@ export const CANONICAL_REWRITE_CATALOG: ReadonlyArray<{
     safeFlags: 'v'
   },
   {
-    ruleId: 'RDH005',
+    ruleId: 'RDH007',
     vulnerablePattern: '^\\/+|\\/+$',
     vulnerableFlags: 'g',
     safeRewrite: '^\\/+|(?<!\\/)\\/+$',
     safeFlags: 'g'
+  },
+  {
+    ruleId: 'RDH007',
+    vulnerablePattern: '^_+|_+$',
+    vulnerableFlags: 'g',
+    safeRewrite: '^_+|(?<!_)_+$',
+    safeFlags: 'g'
+  },
+  {
+    ruleId: 'RDH007',
+    vulnerablePattern: '\\s+$',
+    vulnerableFlags: '',
+    safeRewrite: '(?<!\\s)\\s+$',
+    safeFlags: ''
   },
   {
     ruleId: 'RDH003',

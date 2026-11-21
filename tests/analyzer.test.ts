@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { analyzePattern } from '../src/index.js';
 
-describe('Static ReDoS rules (RDH001, RDH002, RDH003, RDH005, RDH006)', () => {
+describe('Static ReDoS rules (RDH001, RDH002, RDH003, RDH005, RDH006, RDH007)', () => {
   it('flags RDH001 on nested quantifiers with cross-iteration overlap', () => {
     const f1 = analyzePattern('(a+)+$');
     assert.equal(f1.length, 1);
@@ -36,29 +36,58 @@ describe('Static ReDoS rules (RDH001, RDH002, RDH003, RDH005, RDH006)', () => {
       );
     }
     const wildcard = analyzePattern('.*.*=');
-    assert.equal(wildcard[0]?.severity, 'high');
+    assert.equal(wildcard[0]?.severity, 'medium');
+    assert.equal(wildcard[0]?.complexity, 'poly');
     assert.equal(wildcard[0]?.attack?.suffix, '!');
   });
 
-  it('flags RDH005 on nested delimiter loops and unanchored trailing quantifiers', () => {
+  it('flags RDH005 on nested delimiter loops with class-derived severity', () => {
     const nestedSlash = analyzePattern('^(\\w+\\/?)+$');
     assert.equal(nestedSlash.length, 1);
     assert.equal(nestedSlash[0]?.ruleId, 'RDH005');
     assert.equal(nestedSlash[0]?.complexity, 'exp');
+    assert.equal(nestedSlash[0]?.severity, 'high');
 
     const unanchoredLoop = analyzePattern('(a\\/*)+b');
     assert.equal(unanchoredLoop.length, 1);
     assert.equal(unanchoredLoop[0]?.ruleId, 'RDH005');
     assert.equal(unanchoredLoop[0]?.complexity, 'poly');
+    assert.equal(unanchoredLoop[0]?.severity, 'medium');
+  });
 
+  it('flags RDH007 (medium, poly) on unanchored trailing quantifiers and emits tested linear lookbehind rewrites', () => {
     const trimSlashes = analyzePattern('^\\/+|\\/+$/'.slice(0, -1), 'g');
     assert.equal(trimSlashes.length, 1);
-    assert.equal(trimSlashes[0]?.ruleId, 'RDH005');
+    assert.equal(trimSlashes[0]?.ruleId, 'RDH007');
     assert.equal(trimSlashes[0]?.complexity, 'poly');
+    assert.equal(trimSlashes[0]?.severity, 'medium');
+    assert.equal(trimSlashes[0]?.fix?.rewrite, '^\\/+|(?<!\\/)\\/+$');
+
+    const trimUnderscores = analyzePattern('^_+|_+$', 'g');
+    assert.equal(trimUnderscores.length, 1);
+    assert.equal(trimUnderscores[0]?.ruleId, 'RDH007');
+    assert.equal(trimUnderscores[0]?.complexity, 'poly');
+    assert.equal(trimUnderscores[0]?.severity, 'medium');
+    assert.equal(trimUnderscores[0]?.fix?.rewrite, '^_+|(?<!_)_+$');
 
     const trailingSpace = analyzePattern('\\s+$');
     assert.equal(trailingSpace.length, 1);
-    assert.equal(trailingSpace[0]?.ruleId, 'RDH005');
+    assert.equal(trailingSpace[0]?.ruleId, 'RDH007');
+    assert.equal(trailingSpace[0]?.complexity, 'poly');
+    assert.equal(trailingSpace[0]?.severity, 'medium');
+    assert.equal(trailingSpace[0]?.fix?.rewrite, '(?<!\\s)\\s+$');
+
+    // Verify functional equivalence and linear O(n) speed on the RDH007 rewrite
+    const origRe = new RegExp('^_+|_+$', 'g');
+    const safeRe = new RegExp(trimUnderscores[0]!.fix!.rewrite!, trimUnderscores[0]!.flags);
+    for (const sample of ['__a_b__', 'a__', '__', 'abc', '']) {
+      assert.equal(sample.replace(safeRe, ''), sample.replace(origRe, ''));
+    }
+    const longInput = `x${'_'.repeat(160_000)}x`;
+    const t0 = performance.now();
+    assert.equal(longInput.replace(safeRe, ''), longInput);
+    const elapsedMs = performance.now() - t0;
+    assert.ok(elapsedMs < 50, `Expected linear rewrite at n=160k < 50ms, got ${elapsedMs.toFixed(2)}ms`);
   });
 
   it('flags RDH006 on backreferences inside quantified groups while keeping atomic lookahead emulation clean', () => {
